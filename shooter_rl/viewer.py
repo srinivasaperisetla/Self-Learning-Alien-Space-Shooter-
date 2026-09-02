@@ -1,19 +1,24 @@
 """Pygame viewer for the SpaceShooter sim.
 
 Renders the one-enemy numpy sim on screen with the original PNGs.
-Manual mode lets a human play; AI mode is Phase 3 (not yet implemented).
+Supports manual (keyboard) and AI (trained PPO checkpoint) play modes.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 import pygame
 
+from . import config
+from .env import _make_obs
 from .prototype.env_py import (
     GAME_HEIGHT,
     GAME_WIDTH,
     LASER_REFIRE_Y,
+    LASER_SPAWN_X_OFFSET,
+    LASER_SPAWN_Y,
     LEFT,
     PLAYER_Y,
     RIGHT,
@@ -25,6 +30,7 @@ from .prototype.env_py import (
 _ASSETS = Path(__file__).resolve().parent.parent / "assets"
 _WHITE = (255, 255, 255)
 _BLACK = (0, 0, 0)
+_GREY = (160, 160, 160)
 _MONO = "consolas,menlo,couriernew,courier,monospace"
 
 
@@ -49,8 +55,13 @@ def _draw_centered(surface, font, text, color, y):
     surface.blit(rendered, (x, y))
 
 
-def run_manual():
-    """Main loop for manual (human-keyboard) play."""
+def _run_game(mode, model=None, seed=None):
+    """Shared game loop for both manual and AI modes.
+
+    The ONLY difference between modes is how ``action`` is chosen each frame:
+    manual reads the keyboard, AI calls model.predict on the same normalised
+    observation vector that PPO trained on.
+    """
     pygame.init()
     screen = pygame.display.set_mode((GAME_WIDTH, GAME_HEIGHT))
     pygame.display.set_caption("SpaceShooter")
@@ -68,15 +79,18 @@ def run_manual():
     font_hud = pygame.font.SysFont(_MONO, 20)
     font_hud_sm = pygame.font.SysFont(_MONO, 16)
     font_gameover = pygame.font.SysFont(_MONO, 50, bold=True)
+    font_mode = pygame.font.SysFont(_MONO, 14)
 
-    # ---- sim -----------------------------------------------------------
-    sim = SpaceShooterSim(max_steps=None)
+    # ---- sim (endless — no step cap for watching) ----------------------
+    sim = SpaceShooterSim(seed=seed, max_steps=None)
     state = sim._state()
     phase = "start"                    # start | running | game_over
 
+    mode_label = font_mode.render(f"MODE: {mode.upper()}", True, _GREY)
+
     alive = True
     while alive:
-        # ---- events ----------------------------------------------------
+        # ---- events (shared across modes) ------------------------------
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 alive = False
@@ -97,30 +111,38 @@ def run_manual():
 
         # ---- step sim (running only) -----------------------------------
         if phase == "running":
-            keys = pygame.key.get_pressed()
-            # SHOOT takes priority when both a move key and SPACE are held
-            # (known Discrete(4) limitation — Java could move+shoot
-            # simultaneously via separate key events).
-            if keys[pygame.K_SPACE]:
-                action = SHOOT
-            elif keys[pygame.K_LEFT]:
-                action = LEFT
-            elif keys[pygame.K_RIGHT]:
-                action = RIGHT
+            if mode == "ai":
+                obs = _make_obs(state)
+                action, _ = model.predict(obs, deterministic=True)
+                action = int(action)
             else:
-                action = STAY
+                keys = pygame.key.get_pressed()
+                # SHOOT takes priority when both a move key and SPACE are
+                # held (known Discrete(4) limitation — Java could move+shoot
+                # simultaneously via separate key events).
+                if keys[pygame.K_SPACE]:
+                    action = SHOOT
+                elif keys[pygame.K_LEFT]:
+                    action = LEFT
+                elif keys[pygame.K_RIGHT]:
+                    action = RIGHT
+                else:
+                    action = STAY
 
             state, _reward, done, _info = sim.step(action)
             if done:
                 phase = "game_over"
 
-        # ---- render ----------------------------------------------------
+        # ---- render (shared across modes) ------------------------------
         screen.fill(_BLACK)
 
         # Sprites — draw order mirrors Java: laser, player, enemy
         lx, ly = state["laser_x"], state["laser_y"]
         if ly > LASER_REFIRE_Y and lx < GAME_WIDTH:
             screen.blit(laser_img, (lx, ly))
+        else:
+            screen.blit(laser_img,
+                        (state["player_x"] + LASER_SPAWN_X_OFFSET, LASER_SPAWN_Y))
 
         screen.blit(player_img, (state["player_x"], PLAYER_Y))
         screen.blit(enemy_img, (state["enemy_x"], state["enemy_y"]))
@@ -131,6 +153,9 @@ def run_manual():
         lives_surf = font_hud_sm.render(f"Lives: {state['lives']}", True, _WHITE)
         screen.blit(score_surf, (_HUD_RIGHT - score_surf.get_width(), 25))
         screen.blit(lives_surf, (_HUD_RIGHT - lives_surf.get_width(), 45))
+
+        # Mode indicator (top-left corner)
+        screen.blit(mode_label, (10, 10))
 
         # Phase-specific overlays
         if phase == "start":
@@ -157,15 +182,31 @@ def main():
         "--mode", default="manual", choices=["manual", "ai"],
         help="Play mode (default: manual)",
     )
+    parser.add_argument(
+        "--model", default=None,
+        help="Path to a PPO checkpoint .zip (default: models/ppo_shooter_final)",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="RNG seed for reproducible games",
+    )
     args = parser.parse_args()
 
+    model = None
     if args.mode == "ai":
-        # TODO (Phase 3): load a trained checkpoint and feed model actions
-        #   to the sim instead of reading keyboard input.
-        print("AI mode: coming in Phase 3")
-        sys.exit(0)
+        model_path = args.model or os.path.join(
+            config.MODELS_DIR, f"{config.CHECKPOINT_PREFIX}_final",
+        )
+        if not (os.path.isfile(model_path) or os.path.isfile(model_path + ".zip")):
+            print(f"ERROR: checkpoint not found at '{model_path}' or '{model_path}.zip'")
+            print("Train a model first:  python -m shooter_rl.train")
+            sys.exit(1)
 
-    run_manual()
+        from stable_baselines3 import PPO
+        model = PPO.load(model_path)
+        print(f"Loaded checkpoint: {model_path}")
+
+    _run_game(args.mode, model=model, seed=args.seed)
 
 
 if __name__ == "__main__":
