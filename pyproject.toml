@@ -1,0 +1,4 @@
+# TODO: configure scikit-build-core to compile the C++ pybind11 extension and install the shooter_rl package
+[project]
+name = "shooter-rl"
+version = "0.0.1"

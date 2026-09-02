@@ -1,0 +1,16 @@
+# build artifacts
+build/
+*.so
+*.o
+__pycache__/
+*.pyc
+.pytest_cache/
+# RL outputs (keep the dirs, ignore contents)
+models/*
+!models/.gitkeep
+logs/*
+!logs/.gitkeep
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
