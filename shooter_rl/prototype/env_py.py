@@ -54,9 +54,10 @@ class SpaceShooterSim:
     MultiDiscrete([3,2]) later for full fidelity.
     """
 
-    def __init__(self, seed=None, max_steps=None):
+    def __init__(self, seed=None, max_steps=None, spawn_source=None):
         self._init_seed = seed
         self._max_steps = max_steps if (max_steps is not None and max_steps > 0) else None
+        self._spawn_source = spawn_source
         self._rng = np.random.default_rng(seed)
         self.reset()
 
@@ -73,8 +74,11 @@ class SpaceShooterSim:
         self.laser_y = LASER_PARK_Y
 
         # Initial spawn uses newEntities range (y drawn from [100, 600))
-        self.enemy_x = int(self._rng.integers(0, 415))
-        self.enemy_y = -int(self._rng.integers(100, 600))
+        if self._spawn_source is not None:
+            self.enemy_x, self.enemy_y = next(self._spawn_source)
+        else:
+            self.enemy_x = int(self._rng.integers(0, 415))
+            self.enemy_y = -int(self._rng.integers(100, 600))
 
         return self._state()
 
@@ -158,8 +162,11 @@ class SpaceShooterSim:
 
     def _recycle_enemy(self):
         """Recycle enemy using the RECYCLE range (y drawn from [100, 500))."""
-        self.enemy_x = int(self._rng.integers(0, 415))
-        self.enemy_y = -int(self._rng.integers(100, 500))
+        if self._spawn_source is not None:
+            self.enemy_x, self.enemy_y = next(self._spawn_source)
+        else:
+            self.enemy_x = int(self._rng.integers(0, 415))
+            self.enemy_y = -int(self._rng.integers(100, 500))
 
     def _state(self):
         return {

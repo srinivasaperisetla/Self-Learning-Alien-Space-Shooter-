@@ -4,3 +4,4 @@ stable-baselines3
 torch
 tensorboard
 pygame
+pytest
