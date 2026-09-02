@@ -3,3 +3,4 @@ gymnasium
 stable-baselines3
 torch
 tensorboard
+pygame
