@@ -1,22 +1,22 @@
 #pragma once
 
 #include <memory>
-#include <random>
 #include <utility>
 #include <vector>
 
 enum class Action : int { LEFT = 0, RIGHT = 1, STAY = 2, SHOOT = 3 };
 
-enum class EnemyType { NORMAL };
+enum class EnemyType { NORMAL, FAST, SHOOTER };
 
 struct StepResult {
     double reward;
     bool   done;
 };
 
+// Spawn source interface — only used for parity-test injection.
 struct SpawnSource {
     virtual ~SpawnSource() = default;
-    virtual std::pair<int, int> next(bool initial) = 0;
+    virtual std::pair<int, int> next() = 0;
 };
 
 class VectorSpawnSource : public SpawnSource {
@@ -27,15 +27,15 @@ public:
     explicit VectorSpawnSource(std::vector<std::pair<int, int>> spawns)
         : spawns_(std::move(spawns)) {}
 
-    std::pair<int, int> next(bool /*initial*/) override {
+    std::pair<int, int> next() override {
         return spawns_.at(idx_++);
     }
 };
 
-class RngSpawnSource : public SpawnSource {
-    std::mt19937 rng_;
-
-public:
-    explicit RngSpawnSource(uint32_t seed) : rng_(seed) {}
-    std::pair<int, int> next(bool initial) override;
+// Per-entity spawn sources (all may be nullptr for normal play).
+struct SpawnSources {
+    std::shared_ptr<SpawnSource> enemy1;
+    std::shared_ptr<SpawnSource> enemy2;
+    std::shared_ptr<SpawnSource> enemy3;
+    std::shared_ptr<SpawnSource> heart;
 };

@@ -15,45 +15,59 @@ from .prototype.env_py import (
 
 
 def _make_obs(state):
-    """Build a normalised observation vector from a raw state dict.
+    """Build a normalised float32 observation vector from a raw state dict.
 
-    Shared helper so the future C++ Gymnasium wrapper can replicate the same
-    mapping from pixel-space state to [-1, 1] observation.
+    Shared helper so the C++ pybind make_obs replicates the exact same mapping.
 
-    Layout (OBS_DIM = 6):
-        0  player_x       [0, 1]  over [PLAYER_X_MIN, PLAYER_X_MAX]
-        1  lives           [0, 1]  over [0, START_LIVES]
-        2  laser_in_flight 0 / 1
-        3  laser_y         [0, 1]  over [0, GAME_HEIGHT]
-        4  enemy_rel_x     [-1, 1] over [-500, 500]
-        5  enemy_y         [0, 1]  over [0, GAME_HEIGHT]
+    Layout (OBS_DIM = 14):
+         0  player_x           / 417           [0, 1]
+         1  lives              / 3             [0, 1+]
+         2  red laser in-flight 0 / 1
+         3  red laser_y        / 500  clip     [0, 1]
+         4  enemy1 rel_x       (e1x-px)/500   [-1, 1]
+         5  enemy1 rel_y       e1y/500 clip    [0, 1]
+         6  enemy2 rel_x       (e2x-px)/500
+         7  enemy2 rel_y       e2y/500 clip
+         8  enemy3 rel_x       (e3x-px)/500
+         9  enemy3 rel_y       e3y/500 clip
+        10  blue laser rel_x   (blx-px)/500
+        11  blue laser rel_y   bly/500 clip
+        12  heart rel_x        (hx-px)/500
+        13  heart rel_y        hy/500 clip
     """
-    player_x_norm = state["player_x"] / PLAYER_X_MAX
+    px = state["player_x"]
+    _g = float(GAME_HEIGHT)
 
+    player_x_norm = px / PLAYER_X_MAX
     lives_norm = state["lives"] / START_LIVES
 
     laser_y_raw = state["laser_y"]
     in_flight = 1.0 if (LASER_REFIRE_Y < laser_y_raw <= GAME_HEIGHT) else 0.0
-    laser_y_norm = float(np.clip(laser_y_raw / GAME_HEIGHT, 0.0, 1.0))
+    laser_y_norm = float(np.clip(laser_y_raw / _g, 0.0, 1.0))
 
-    enemy_rel_x = (state["enemy_x"] - state["player_x"]) / 500.0
-    enemy_y_norm = float(np.clip(state["enemy_y"] / GAME_HEIGHT, 0.0, 1.0))
-
-    return np.array(
-        [player_x_norm, lives_norm, in_flight, laser_y_norm, enemy_rel_x, enemy_y_norm],
-        dtype=np.float32,
-    )
+    return np.array([
+        player_x_norm,
+        lives_norm,
+        in_flight,
+        laser_y_norm,
+        (state["enemy1_x"] - px) / 500.0,
+        float(np.clip(state["enemy1_y"] / _g, 0.0, 1.0)),
+        (state["enemy2_x"] - px) / 500.0,
+        float(np.clip(state["enemy2_y"] / _g, 0.0, 1.0)),
+        (state["enemy3_x"] - px) / 500.0,
+        float(np.clip(state["enemy3_y"] / _g, 0.0, 1.0)),
+        (state["blue_x"] - px) / 500.0,
+        float(np.clip(state["blue_y"] / _g, 0.0, 1.0)),
+        (state["heart_x"] - px) / 500.0,
+        float(np.clip(state["heart_y"] / _g, 0.0, 1.0)),
+    ], dtype=np.float32)
 
 
 class AlienShooterEnv(gymnasium.Env):
-    """Gymnasium (v1) wrapper for the one-enemy SpaceShooter sim.
+    """Gymnasium (v1) wrapper for the full SpaceShooter sim.
 
-    Observation:  Box(-1, 1, shape=(6,), float32)
-    Action:       Discrete(4)  — LEFT / RIGHT / STAY / SHOOT
-
-    The episode terminates on death (lives <= 0) or truncates at MAX_STEPS.
-    A ``is_win`` flag is added to *info* at episode end (label only — does not
-    affect reward or termination).
+    Observation:  Box(-1, 1, shape=(14,), float32)
+    Action:       Discrete(4) — LEFT / RIGHT / STAY / SHOOT
     """
 
     metadata = {"render_modes": []}
