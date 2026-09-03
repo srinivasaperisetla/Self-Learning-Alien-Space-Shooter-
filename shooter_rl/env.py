@@ -6,6 +6,10 @@ from gymnasium import spaces
 
 from . import config
 from .prototype.env_py import (
+    BLUE_LASER_SPEED,
+    ENEMY1_FALL_SPEED,
+    ENEMY2_FALL_SPEED,
+    ENEMY3_FALL_SPEED,
     GAME_HEIGHT,
     LASER_REFIRE_Y,
     PLAYER_X_MAX,
@@ -19,7 +23,7 @@ def _make_obs(state):
 
     Shared helper so the C++ pybind make_obs replicates the exact same mapping.
 
-    Layout (OBS_DIM = 14):
+    Layout (OBS_DIM = 19):
          0  player_x           / 417           [0, 1]
          1  lives              / 3             [0, 1+]
          2  red laser in-flight 0 / 1
@@ -34,6 +38,15 @@ def _make_obs(state):
         11  blue laser rel_y   bly/500 clip
         12  heart rel_x        (hx-px)/500
         13  heart rel_y        hy/500 clip
+        14  enemy1 fall speed  ENEMY1_FALL_SPEED/7  (constant 0.4286)
+        15  enemy2 fall speed  ENEMY2_FALL_SPEED/7  (constant 1.0)
+        16  enemy3 fall speed  ENEMY3_FALL_SPEED/7  (constant 0.1429)
+        17  blue laser in-flight  1.0 if 0<=blue_y<=500 else 0.0
+        18  blue laser vel norm   BLUE_LASER_SPEED/12 if in-flight else 0.0
+
+    Fields 14-16 let the agent distinguish fast vs slow enemies.
+    Fields 17-18 give an explicit "blue laser descending at speed" signal
+    so the agent can time dodges instead of fleeing the region.
     """
     px = state["player_x"]
     _g = float(GAME_HEIGHT)
@@ -44,6 +57,10 @@ def _make_obs(state):
     laser_y_raw = state["laser_y"]
     in_flight = 1.0 if (LASER_REFIRE_Y < laser_y_raw <= GAME_HEIGHT) else 0.0
     laser_y_norm = float(np.clip(laser_y_raw / _g, 0.0, 1.0))
+
+    blue_y = state["blue_y"]
+    blue_in_flight = 1.0 if (0 <= blue_y <= GAME_HEIGHT) else 0.0
+    blue_vel = (BLUE_LASER_SPEED / 12.0) if blue_in_flight else 0.0
 
     return np.array([
         player_x_norm,
@@ -57,16 +74,21 @@ def _make_obs(state):
         (state["enemy3_x"] - px) / 500.0,
         float(np.clip(state["enemy3_y"] / _g, 0.0, 1.0)),
         (state["blue_x"] - px) / 500.0,
-        float(np.clip(state["blue_y"] / _g, 0.0, 1.0)),
+        float(np.clip(blue_y / _g, 0.0, 1.0)),
         (state["heart_x"] - px) / 500.0,
         float(np.clip(state["heart_y"] / _g, 0.0, 1.0)),
+        ENEMY1_FALL_SPEED / 7.0,
+        ENEMY2_FALL_SPEED / 7.0,
+        ENEMY3_FALL_SPEED / 7.0,
+        blue_in_flight,
+        blue_vel,
     ], dtype=np.float32)
 
 
 class AlienShooterEnv(gymnasium.Env):
     """Gymnasium (v1) wrapper for the full SpaceShooter sim.
 
-    Observation:  Box(-1, 1, shape=(14,), float32)
+    Observation:  Box(-1, 1, shape=(19,), float32)
     Action:       Discrete(4) — LEFT / RIGHT / STAY / SHOOT
     """
 

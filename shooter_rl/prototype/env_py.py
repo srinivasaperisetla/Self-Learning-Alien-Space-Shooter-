@@ -51,11 +51,13 @@ HEART_INITIAL_Y = 2000
 START_LIVES = 3
 KILL_SCORE = 10
 
-# RL reward shaping
-KILL_REWARD = 10.0
+# RL reward shaping (per-enemy; KILL_SCORE stays 10 for all — Java-faithful)
+KILL_REWARD_ENEMY1 = 10.0
+KILL_REWARD_ENEMY2 = 25.0
+KILL_REWARD_ENEMY3 = 30.0
 HIT_PENALTY = -10.0
 SURVIVE_BONUS = 0.01
-HEART_REWARD = 5.0
+HEART_REWARD = 15.0
 
 # Action encoding
 LEFT = 0
@@ -201,7 +203,7 @@ class SpaceShooterSim:
                 and self.laser_y <= self.enemy1_y + 75
                 and self.laser_y >= self.enemy1_y):
             self.score += KILL_SCORE
-            reward += KILL_REWARD
+            reward += KILL_REWARD_ENEMY1
             self.laser_x = LASER_PARK_X
             self.laser_y = LASER_PARK_Y
             self._recycle_enemy1()
@@ -212,7 +214,7 @@ class SpaceShooterSim:
                 and self.laser_y <= self.enemy2_y + 75
                 and self.laser_y >= self.enemy2_y):
             self.score += KILL_SCORE
-            reward += KILL_REWARD
+            reward += KILL_REWARD_ENEMY2
             self.laser_x = LASER_PARK_X
             self.laser_y = LASER_PARK_Y
             self._recycle_enemy2(bottom=False)
@@ -223,7 +225,7 @@ class SpaceShooterSim:
                 and self.laser_y <= self.enemy3_y + 75
                 and self.laser_y >= self.enemy3_y):
             self.score += KILL_SCORE
-            reward += KILL_REWARD
+            reward += KILL_REWARD_ENEMY3
             self.laser_x = LASER_PARK_X
             self.laser_y = LASER_PARK_Y
             self._recycle_enemy3()

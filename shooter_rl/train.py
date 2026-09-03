@@ -31,6 +31,7 @@ def main():
         "MlpPolicy",
         env,
         verbose=1,
+        ent_coef=0.01,
         tensorboard_log=config.LOGS_DIR,
         seed=args.seed,
     )

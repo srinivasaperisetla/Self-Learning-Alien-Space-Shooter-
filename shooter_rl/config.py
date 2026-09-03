@@ -4,7 +4,7 @@ Game-physics constants live in prototype/env_py.py (and later constants.hpp).
 Only training / evaluation knobs belong here.
 """
 
-OBS_DIM = 14
+OBS_DIM = 19
 N_ACTIONS = 4
 
 MAX_STEPS = 3000

@@ -42,7 +42,9 @@ inline constexpr int HEART_INITIAL_Y   = 2000;
 inline constexpr int START_LIVES = 3;
 inline constexpr int KILL_SCORE  = 10;
 
-inline constexpr double KILL_REWARD    = 10.0;
-inline constexpr double HIT_PENALTY   = -10.0;
-inline constexpr double SURVIVE_BONUS  = 0.01;
-inline constexpr double HEART_REWARD   = 5.0;
+inline constexpr double KILL_REWARD_ENEMY1 = 10.0;
+inline constexpr double KILL_REWARD_ENEMY2 = 25.0;
+inline constexpr double KILL_REWARD_ENEMY3 = 30.0;
+inline constexpr double HIT_PENALTY        = -10.0;
+inline constexpr double SURVIVE_BONUS      = 0.01;
+inline constexpr double HEART_REWARD       = 15.0;

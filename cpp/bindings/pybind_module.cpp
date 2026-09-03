@@ -16,8 +16,8 @@
 
 namespace py = pybind11;
 
-// OBS_DIM = 14  — must match shooter_rl/config.py and env.py _make_obs.
-static constexpr int OBS_DIM = 14;
+// OBS_DIM = 19  — must match shooter_rl/config.py and env.py _make_obs.
+static constexpr int OBS_DIM = 19;
 
 static py::array_t<float> make_obs(const GameState& s) {
     auto obs = py::array_t<float>(OBS_DIM);
@@ -46,6 +46,15 @@ static py::array_t<float> make_obs(const GameState& s) {
 
     buf(12) = (static_cast<float>(s.heart_x) - px) / 500.0f;
     buf(13) = std::clamp(static_cast<float>(s.heart_y) / gh, 0.0f, 1.0f);
+
+    buf(14) = static_cast<float>(ENEMY1_FALL_SPEED) / 7.0f;
+    buf(15) = static_cast<float>(ENEMY2_FALL_SPEED) / 7.0f;
+    buf(16) = static_cast<float>(ENEMY3_FALL_SPEED) / 7.0f;
+
+    const bool blue_active = (s.blue_y >= 0 && s.blue_y <= GAME_HEIGHT);
+    buf(17) = blue_active ? 1.0f : 0.0f;
+    buf(18) = blue_active ? (static_cast<float>(BLUE_LASER_SPEED) / 12.0f)
+                          : 0.0f;
 
     return obs;
 }

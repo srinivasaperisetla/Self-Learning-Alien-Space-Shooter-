@@ -220,7 +220,7 @@ StepResult Environment::step(int action) {
         state_.laser_y <= state_.enemy1_y + 75 &&
         state_.laser_y >= state_.enemy1_y) {
         state_.score += KILL_SCORE;
-        reward += KILL_REWARD;
+        reward += KILL_REWARD_ENEMY1;
         state_.laser_x = LASER_PARK_X;
         state_.laser_y = LASER_PARK_Y;
         recycle_enemy1();
@@ -232,7 +232,7 @@ StepResult Environment::step(int action) {
         state_.laser_y <= state_.enemy2_y + 75 &&
         state_.laser_y >= state_.enemy2_y) {
         state_.score += KILL_SCORE;
-        reward += KILL_REWARD;
+        reward += KILL_REWARD_ENEMY2;
         state_.laser_x = LASER_PARK_X;
         state_.laser_y = LASER_PARK_Y;
         recycle_enemy2(/*bottom=*/false);
@@ -244,7 +244,7 @@ StepResult Environment::step(int action) {
         state_.laser_y <= state_.enemy3_y + 75 &&
         state_.laser_y >= state_.enemy3_y) {
         state_.score += KILL_SCORE;
-        reward += KILL_REWARD;
+        reward += KILL_REWARD_ENEMY3;
         state_.laser_x = LASER_PARK_X;
         state_.laser_y = LASER_PARK_Y;
         recycle_enemy3();
