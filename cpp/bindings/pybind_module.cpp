@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <memory>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -9,6 +11,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "shooter/batched_environment.hpp"
 #include "shooter/constants.hpp"
 #include "shooter/environment.hpp"
 #include "shooter/game_state.hpp"
@@ -16,8 +19,9 @@
 
 namespace py = pybind11;
 
-// OBS_DIM = 19  — must match shooter_rl/config.py and env.py _make_obs.
 static constexpr int OBS_DIM = 19;
+
+// ---- single-env obs (unchanged) ------------------------------------
 
 static py::array_t<float> make_obs(const GameState& s) {
     auto obs = py::array_t<float>(OBS_DIM);
@@ -34,16 +38,13 @@ static py::array_t<float> make_obs(const GameState& s) {
 
     buf(4)  = (static_cast<float>(s.enemy1_x) - px) / 500.0f;
     buf(5)  = std::clamp(static_cast<float>(s.enemy1_y) / gh, 0.0f, 1.0f);
-
     buf(6)  = (static_cast<float>(s.enemy2_x) - px) / 500.0f;
     buf(7)  = std::clamp(static_cast<float>(s.enemy2_y) / gh, 0.0f, 1.0f);
-
     buf(8)  = (static_cast<float>(s.enemy3_x) - px) / 500.0f;
     buf(9)  = std::clamp(static_cast<float>(s.enemy3_y) / gh, 0.0f, 1.0f);
 
     buf(10) = (static_cast<float>(s.blue_x) - px) / 500.0f;
     buf(11) = std::clamp(static_cast<float>(s.blue_y) / gh, 0.0f, 1.0f);
-
     buf(12) = (static_cast<float>(s.heart_x) - px) / 500.0f;
     buf(13) = std::clamp(static_cast<float>(s.heart_y) / gh, 0.0f, 1.0f);
 
@@ -55,20 +56,19 @@ static py::array_t<float> make_obs(const GameState& s) {
     buf(17) = blue_active ? 1.0f : 0.0f;
     buf(18) = blue_active ? (static_cast<float>(BLUE_LASER_SPEED) / 12.0f)
                           : 0.0f;
-
     return obs;
 }
 
+// =====================================================================
 PYBIND11_MODULE(shooter_cpp, m) {
-    m.doc() = "C++ SpaceShooter full-game simulation";
+    m.doc() = "C++ SpaceShooter simulation (single + batched)";
 
+    // ---- single Environment (parity reference, unchanged) -----------
     py::class_<Environment>(m, "Environment")
-        // Normal play: seeded internal RNG
         .def(py::init([](int max_steps, uint32_t seed) {
                  return Environment(max_steps, seed);
              }),
              py::arg("max_steps") = 0, py::arg("seed") = 42u)
-        // Parity test: per-entity spawn lists in a dict
         .def(py::init(
                  [](int max_steps, py::dict spawns_dict) {
                      auto e1 = spawns_dict["enemy1"]
@@ -121,4 +121,89 @@ PYBIND11_MODULE(shooter_cpp, m) {
             d["steps"]     = s.steps;
             return d;
         });
+
+    // ---- BatchedEnvironment (SoA + threading) -----------------------
+    py::class_<BatchedEnvironment>(m, "BatchedEnvironment")
+        .def(py::init<int, int, uint32_t, int>(),
+             py::arg("n_envs"),
+             py::arg("max_steps") = 0,
+             py::arg("base_seed") = 42u,
+             py::arg("n_threads") = 0)
+        .def("reset_all",
+             [](BatchedEnvironment& b) {
+                 int n = b.n_envs();
+                 auto obs = py::array_t<float>({n, OBS_DIM});
+                 b.reset_all_obs(obs.mutable_data());
+                 return obs;
+             })
+        .def("step",
+             [](BatchedEnvironment& b,
+                py::array_t<int, py::array::c_style | py::array::forcecast> moves,
+                py::array_t<int, py::array::c_style | py::array::forcecast> fires) {
+                 int n = b.n_envs();
+                 auto obs = py::array_t<float>({n, OBS_DIM});
+                 auto rew = py::array_t<float>(n);
+                 auto dones = py::array_t<uint8_t>(n);
+
+                 b.step(moves.data(), fires.data(),
+                        obs.mutable_data(), rew.mutable_data(),
+                        dones.mutable_data());
+
+                 return py::make_tuple(obs, rew, dones);
+             },
+             py::arg("moves"), py::arg("fires"))
+        .def_property_readonly("n_envs", &BatchedEnvironment::n_envs)
+        .def_property_readonly("n_threads", &BatchedEnvironment::n_threads);
+
+    // ---- benchmark helpers (pure C++, no Python overhead) -----------
+
+    m.def("benchmark_single_env",
+          [](int n_steps, uint32_t seed) -> double {
+              Environment env(0, seed);
+              std::mt19937 rng(seed + 99);
+              std::uniform_int_distribution<int> m_dist(0, 2);
+              std::uniform_int_distribution<int> f_dist(0, 1);
+
+              auto t0 = std::chrono::high_resolution_clock::now();
+              for (int i = 0; i < n_steps; ++i) {
+                  auto res = env.step(m_dist(rng), f_dist(rng));
+                  if (res.done) env.reset();
+              }
+              auto t1 = std::chrono::high_resolution_clock::now();
+              return std::chrono::duration<double>(t1 - t0).count();
+          },
+          py::arg("n_steps"), py::arg("seed") = 42u,
+          "Step a single Environment n_steps times in a tight C++ loop, "
+          "return elapsed seconds.");
+
+    m.def("benchmark_batched_env",
+          [](int n_envs, int n_iters, int n_threads, uint32_t seed) -> double {
+              BatchedEnvironment batch(n_envs, 0, seed, n_threads);
+
+              std::vector<int> moves(n_envs);
+              std::vector<int> fires(n_envs);
+              std::vector<float> obs(n_envs * OBS_DIM);
+              std::vector<float> rewards(n_envs);
+              std::vector<uint8_t> dones(n_envs);
+
+              std::mt19937 rng(seed + 99);
+              std::uniform_int_distribution<int> m_dist(0, 2);
+              std::uniform_int_distribution<int> f_dist(0, 1);
+
+              auto t0 = std::chrono::high_resolution_clock::now();
+              for (int it = 0; it < n_iters; ++it) {
+                  for (int i = 0; i < n_envs; ++i) {
+                      moves[i] = m_dist(rng);
+                      fires[i] = f_dist(rng);
+                  }
+                  batch.step(moves.data(), fires.data(),
+                             obs.data(), rewards.data(), dones.data());
+              }
+              auto t1 = std::chrono::high_resolution_clock::now();
+              return std::chrono::duration<double>(t1 - t0).count();
+          },
+          py::arg("n_envs"), py::arg("n_iters"),
+          py::arg("n_threads") = 0, py::arg("seed") = 42u,
+          "Step a BatchedEnvironment (n_envs × n_iters) in C++, "
+          "return elapsed seconds.");
 }

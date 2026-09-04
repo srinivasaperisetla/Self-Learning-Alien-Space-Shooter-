@@ -1,0 +1,13 @@
+Benchmark run: 20260904_133528
+Hardware threads: 8
+
+Config                                        steps/sec  speedup
+------------------------------------------------------------------
+Python-loop single-env                        1,014,847     1.0x
+C++ tight-loop single-env                    15,480,855    15.3x
+Batched SoA (1024 envs, 1 thread)            10,089,320     9.9x
+Batched SoA C++ loop (1024×1T)               10,451,584    10.3x
+Batched SoA (1024 envs, 8T)                  15,349,025    15.1x
+Batched SoA C++ loop (1024×8T)               15,178,484    15.0x
+
+Best: C++ tight-loop single-env = 15x vs naive baseline, 15,480,855 steps/sec
