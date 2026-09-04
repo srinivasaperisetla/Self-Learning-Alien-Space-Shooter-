@@ -89,7 +89,7 @@ class AlienShooterEnv(gymnasium.Env):
     """Gymnasium (v1) wrapper for the full SpaceShooter sim.
 
     Observation:  Box(-1, 1, shape=(19,), float32)
-    Action:       Discrete(4) — LEFT / RIGHT / STAY / SHOOT
+    Action:       MultiDiscrete([3, 2]) — [move(LEFT/STAY/RIGHT), fire(NO/YES)]
     """
 
     metadata = {"render_modes": []}
@@ -98,7 +98,7 @@ class AlienShooterEnv(gymnasium.Env):
         super().__init__()
         self._seed = seed
         self._sim = SpaceShooterSim(seed=seed, max_steps=config.MAX_STEPS)
-        self.action_space = spaces.Discrete(config.N_ACTIONS)
+        self.action_space = spaces.MultiDiscrete([3, 2])
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0, shape=(config.OBS_DIM,), dtype=np.float32,
         )
@@ -109,7 +109,7 @@ class AlienShooterEnv(gymnasium.Env):
         return _make_obs(raw), {}
 
     def step(self, action):
-        raw, reward, done, info = self._sim.step(int(action))
+        raw, reward, done, info = self._sim.step(action)
         obs = _make_obs(raw)
 
         terminated = info["death"]

@@ -33,7 +33,7 @@ public:
     Environment(int max_steps, SpawnSources sources);
 
     GameState  reset();
-    StepResult step(int action);
+    StepResult step(int move, int fire);
 
     const GameState& get_state() const { return state_; }
 };

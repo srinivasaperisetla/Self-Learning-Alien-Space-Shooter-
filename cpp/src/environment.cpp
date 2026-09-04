@@ -145,25 +145,25 @@ GameState Environment::reset() {
 // step — one game tick (mirrors env_py.py exactly)
 // =====================================================================
 
-StepResult Environment::step(int action) {
+StepResult Environment::step(int move, int fire) {
     double reward = 0.0;
 
-    // 1. Apply action -------------------------------------------------
-    if (action == static_cast<int>(Action::LEFT)) {
+    // 1. Apply action — move first, then fire -------------------------
+    if (move == 0) {
         state_.player_x -= PLAYER_SPEED;
-    } else if (action == static_cast<int>(Action::RIGHT)) {
+    } else if (move == 2) {
         state_.player_x += PLAYER_SPEED;
-    } else if (action == static_cast<int>(Action::SHOOT)) {
-        if (state_.laser_y <= LASER_REFIRE_Y) {
-            state_.laser_y = LASER_SPAWN_Y;
-            state_.laser_x = state_.player_x + LASER_SPAWN_X_OFFSET;
-        }
     }
 
     if (state_.player_x < PLAYER_X_MIN) {
         state_.player_x = PLAYER_X_MIN;
     } else if (state_.player_x > PLAYER_X_MAX) {
         state_.player_x = PLAYER_X_MAX;
+    }
+
+    if (fire == 1 && state_.laser_y <= LASER_REFIRE_Y) {
+        state_.laser_y = LASER_SPAWN_Y;
+        state_.laser_x = state_.player_x + LASER_SPAWN_X_OFFSET;
     }
 
     // 2. Move red laser -----------------------------------------------

@@ -94,12 +94,12 @@ PYBIND11_MODULE(shooter_cpp, m) {
                  return make_obs(env.get_state());
              })
         .def("step",
-             [](Environment& env, int action) {
-                 auto res = env.step(action);
+             [](Environment& env, int move, int fire) {
+                 auto res = env.step(move, fire);
                  return py::make_tuple(make_obs(env.get_state()), res.reward,
                                        res.done);
              },
-             py::arg("action"))
+             py::arg("move"), py::arg("fire"))
         .def("get_state", [](const Environment& env) {
             const auto& s = env.get_state();
             py::dict d;

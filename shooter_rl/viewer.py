@@ -19,11 +19,7 @@ from .prototype.env_py import (
     LASER_REFIRE_Y,
     LASER_SPAWN_X_OFFSET,
     LASER_SPAWN_Y,
-    LEFT,
     PLAYER_Y,
-    RIGHT,
-    SHOOT,
-    STAY,
     SpaceShooterSim,
 )
 
@@ -108,19 +104,18 @@ def _run_game(mode, model=None, seed=None):
             if mode == "ai":
                 obs = _make_obs(state)
                 action, _ = model.predict(obs, deterministic=True)
-                action = int(action)
+                move_act, fire_act = int(action[0]), int(action[1])
+                state, _reward, done, _info = sim.step([move_act, fire_act])
             else:
                 keys = pygame.key.get_pressed()
-                if keys[pygame.K_SPACE]:
-                    action = SHOOT
-                elif keys[pygame.K_LEFT]:
-                    action = LEFT
+                move_act = 1  # STAY
+                if keys[pygame.K_LEFT]:
+                    move_act = 0
                 elif keys[pygame.K_RIGHT]:
-                    action = RIGHT
-                else:
-                    action = STAY
+                    move_act = 2
+                fire_act = 1 if keys[pygame.K_SPACE] else 0
+                state, _reward, done, _info = sim.step([move_act, fire_act])
 
-            state, _reward, done, _info = sim.step(action)
             if done:
                 phase = "game_over"
 

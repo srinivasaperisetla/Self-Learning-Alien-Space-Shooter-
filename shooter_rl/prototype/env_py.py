@@ -59,11 +59,18 @@ HIT_PENALTY = -10.0
 SURVIVE_BONUS = 0.01
 HEART_REWARD = 15.0
 
-# Action encoding
+# Legacy single-int action constants (kept for reference / imports)
 LEFT = 0
 RIGHT = 1
 STAY = 2
 SHOOT = 3
+
+# MultiDiscrete([3, 2]) action encoding: [move, fire]
+MOVE_LEFT = 0
+MOVE_STAY = 1
+MOVE_RIGHT = 2
+FIRE_NO = 0
+FIRE_YES = 1
 
 
 class SpaceShooterSim:
@@ -139,21 +146,23 @@ class SpaceShooterSim:
     # ===================================================================
     def step(self, action):
         reward = 0.0
+        move = int(action[0])
+        fire = int(action[1])
 
-        # 1. Apply action -----------------------------------------------
-        if action == LEFT:
+        # 1. Apply action — move first, then fire -----------------------
+        if move == MOVE_LEFT:
             self.player_x -= PLAYER_SPEED
-        elif action == RIGHT:
+        elif move == MOVE_RIGHT:
             self.player_x += PLAYER_SPEED
-        elif action == SHOOT:
-            if self.laser_y <= LASER_REFIRE_Y:
-                self.laser_y = LASER_SPAWN_Y
-                self.laser_x = self.player_x + LASER_SPAWN_X_OFFSET
 
         if self.player_x < PLAYER_X_MIN:
             self.player_x = PLAYER_X_MIN
         elif self.player_x > PLAYER_X_MAX:
             self.player_x = PLAYER_X_MAX
+
+        if fire == FIRE_YES and self.laser_y <= LASER_REFIRE_Y:
+            self.laser_y = LASER_SPAWN_Y
+            self.laser_x = self.player_x + LASER_SPAWN_X_OFFSET
 
         # 2. Move red laser if in flight --------------------------------
         if self.laser_y > LASER_REFIRE_Y:

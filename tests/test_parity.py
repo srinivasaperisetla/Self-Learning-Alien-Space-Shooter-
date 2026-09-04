@@ -5,14 +5,17 @@ Per-entity spawn design:
     pairs injected into both sims.  Pairs are consumed in collision-resolution
     order, which is identical in Python and C++:
 
-        reset  → pair 0 from each entity's list
+        reset  -> pair 0 from each entity's list
         recycle events during step (in collision order):
-            enemy1 bottom / laser-kill / player-hit → next from enemy1 list
-            enemy2 bottom / laser-kill / player-hit → next from enemy2 list
-            enemy3 bottom / laser-kill / player-hit → next from enemy3 list
-            heart  missed / pickup                  → next from heart list
+            enemy1 bottom / laser-kill / player-hit -> next from enemy1 list
+            enemy2 bottom / laser-kill / player-hit -> next from enemy2 list
+            enemy3 bottom / laser-kill / player-hit -> next from enemy3 list
+            heart  missed / pickup                  -> next from heart list
 
-    Blue laser position is deterministic (derived from enemy3) — no source.
+    Blue laser position is deterministic (derived from enemy3) -- no source.
+
+Actions are [move, fire] pairs (MultiDiscrete([3, 2])):
+    move: 0=LEFT, 1=STAY, 2=RIGHT    fire: 0=NO-FIRE, 1=FIRE
 """
 
 import numpy as np
@@ -55,55 +58,56 @@ def _make_all_spawns(n=500, base_seed=10000):
     }
 
 
-def _assert_states_match(py_state, cpp_state, tick, action):
+def _assert_states_match(py_state, cpp_state, tick, move, fire):
     for key in _STATE_KEYS:
         pv = py_state[key]
         cv = cpp_state[key]
         assert pv == cv, (
-            f"MISMATCH at tick {tick} (action={action}): "
+            f"MISMATCH at tick {tick} (move={move}, fire={fire}): "
             f"{key}: python={pv}, cpp={cv}"
         )
 
 
 def _run_parity(actions, n_pairs=500):
-    """Step both sims in lockstep and assert full parity."""
+    """Step both sims in lockstep and assert full parity.
+
+    *actions* is a sequence of (move, fire) tuples.
+    """
     spawns = _make_all_spawns(n_pairs)
 
-    # Python: spawn_source is a dict of iterators
     py_src = {k: iter(v) for k, v in spawns.items()}
     py_sim = SpaceShooterSim(max_steps=0, spawn_source=py_src)
 
-    # C++: spawn_source is a dict of lists (converted to VectorSpawnSources)
     cpp_env = shooter_cpp.Environment(0, spawns)
 
-    # Initial state (constructors consume pair 0 from each entity)
     py_state = py_sim._state()
     cpp_state = cpp_env.get_state()
-    _assert_states_match(py_state, cpp_state, tick=-1, action=-1)
+    _assert_states_match(py_state, cpp_state, tick=-1, move=-1, fire=-1)
 
-    for tick, action in enumerate(actions):
-        action = int(action)
+    for tick, (move, fire) in enumerate(actions):
+        move = int(move)
+        fire = int(fire)
 
-        py_state, py_reward, py_done, _info = py_sim.step(action)
-        cpp_obs, cpp_reward, cpp_done = cpp_env.step(action)
+        py_state, py_reward, py_done, _info = py_sim.step([move, fire])
+        cpp_obs, cpp_reward, cpp_done = cpp_env.step(move, fire)
         cpp_state = cpp_env.get_state()
 
-        _assert_states_match(py_state, cpp_state, tick, action)
+        _assert_states_match(py_state, cpp_state, tick, move, fire)
 
         assert abs(py_reward - cpp_reward) < 1e-9, (
-            f"REWARD MISMATCH at tick {tick} (action={action}): "
+            f"REWARD MISMATCH at tick {tick} (move={move}, fire={fire}): "
             f"python={py_reward}, cpp={cpp_reward}"
         )
 
         assert py_done == cpp_done, (
-            f"DONE MISMATCH at tick {tick} (action={action}): "
+            f"DONE MISMATCH at tick {tick} (move={move}, fire={fire}): "
             f"python={py_done}, cpp={cpp_done}"
         )
 
         py_obs = _make_obs(py_state)
         np.testing.assert_allclose(
             py_obs, cpp_obs, atol=1e-6,
-            err_msg=f"OBS MISMATCH at tick {tick} (action={action})",
+            err_msg=f"OBS MISMATCH at tick {tick} (move={move}, fire={fire})",
         )
 
         if py_done:
@@ -115,33 +119,43 @@ def _run_parity(actions, n_pairs=500):
 # --------------------------------------------------------------------------
 
 def test_random_actions():
-    """10 000-step pseudo-random action sequence."""
+    """10 000-step pseudo-random (move, fire) sequence."""
     rng = np.random.default_rng(42)
-    actions = rng.integers(0, 4, size=10_000)
-    _run_parity(actions)
+    moves = rng.integers(0, 3, size=10_000)
+    fires = rng.integers(0, 2, size=10_000)
+    _run_parity(list(zip(moves, fires)))
 
 
 def test_spam_shoot():
-    """Agent spams SHOOT every tick."""
-    _run_parity([3] * 5_000)
+    """Agent stays still and fires every tick."""
+    _run_parity([(1, 1)] * 5_000)
 
 
 def test_hug_left_wall():
-    """Agent holds LEFT every tick."""
-    _run_parity([0] * 5_000)
+    """Agent holds LEFT, no fire."""
+    _run_parity([(0, 0)] * 5_000)
 
 
 def test_alternate_left_right():
-    """Agent alternates LEFT / RIGHT."""
-    actions = [0 if i % 2 == 0 else 1 for i in range(5_000)]
+    """Agent alternates LEFT / RIGHT, firing every tick."""
+    actions = [(0 if i % 2 == 0 else 2, 1) for i in range(5_000)]
     _run_parity(actions)
 
 
 def test_stay_under_blue_laser():
-    """Agent stays still — exercises blue laser refire + player hit."""
-    _run_parity([2] * 5_000)
+    """Agent stays still, no fire — exercises blue laser refire + hit."""
+    _run_parity([(1, 0)] * 5_000)
 
 
 def test_chase_right():
-    """Agent holds RIGHT, chasing rightward entities and hearts."""
-    _run_parity([1] * 5_000)
+    """Agent holds RIGHT, fires every tick."""
+    _run_parity([(2, 1)] * 5_000)
+
+
+def test_move_and_shoot():
+    """Agent moves AND shoots simultaneously — exercises the MultiDiscrete
+    capability that Discrete(4) couldn't express."""
+    rng = np.random.default_rng(99)
+    moves = rng.integers(0, 3, size=5_000)
+    actions = [(int(m), 1) for m in moves]
+    _run_parity(actions)
